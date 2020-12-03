@@ -53,7 +53,7 @@ class Calculator:
         try:
             sol = a / b
         except ZeroDivisionError:
-            return 'CANNOT DIVIDE BY ZERO'
+            return 'CANNOT DIVIDE BY ZERO\n'
         self.solution = sol
         return str(sol)
 
@@ -61,17 +61,16 @@ class Calculator:
         reply = f"state={self.state}\n" \
                 f"command={self.command}\n" \
                 f"timeLeft={self.timeLeft}\n" \
-                f"solution={self.solution}"
+                f"solution={self.solution}\n"
         return reply
 
     def stop(self):
-        reply = ''
+        reply = ""
         if self.timeLeft != 0:
             self.timeLeft = 0
             self.abort = True
-            reply = "CANCELLED"
         else:
-            reply = "IDLE"
+            reply = "IDLE\n"
 
         return reply
 
@@ -93,6 +92,8 @@ def calculate(writer, msg):
 
     if calc.abort:
         calc.abort = False
+        reply = f"{msg} CANCELLED\n"
+        writer.write(reply.encode())
     else:
         if msgList[0] == 'add':
             reply = calc.add(float(msgList[1]), float(msgList[2]))
@@ -116,26 +117,26 @@ async def check_data(msg):
         if msgList[0] == 'status' or msgList[0] == 'stop':
             return ''
         else:
-            return f"{msg} ERROR"
+            return f"{msg} ERROR\n"
 
     elif len(msgList) == 3:
         if msgList[0] == 'add' or msgList[0] == 'subtract' or msgList[0] == 'multiply' or msgList[0] == 'divide':
             try:
                 float(msgList[1])
                 float(msgList[2])
-                return f"{msg} RUNNING"
+                return f"{msg} RUNNING\n"
 
             except IndexError:
-                return f"{msg} ERROR"
+                return f"{msg} ERROR\n"
 
             except ValueError:
-                return f"{msg} ERROR"
+                return f"{msg} ERROR\n"
 
         else:
-            return f"{msg} ERROR"
+            return f"{msg} ERROR\n"
 
     else:
-        return f"{msg} ERROR"
+        return f"{msg} ERROR\n"
 
 
 async def handle_data(reader, writer):
@@ -149,7 +150,6 @@ async def handle_data(reader, writer):
             loop = False
         else:
             check = await check_data(message)
-            check = check+'\n'
             writer.write(check.encode())
 
             msgList = message.split(",")
@@ -159,7 +159,6 @@ async def handle_data(reader, writer):
                 elif msgList[0] == 'stop':
                     reply = calc.stop()
 
-                reply = reply + '\n'
                 writer.write(reply.encode())
 
             else:
