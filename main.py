@@ -1,7 +1,28 @@
 #!/usr/bin/env python3
 
+# SLOW CALCULATOR
+#   This calculator works by accepting the following commands, then waiting 10 seconds before performing the
+#   calculation. The 'status' command can be used at any time to determine the current state of the calculator.
+#   The stop command can be used at any time to stop the calculation.
+#
+# COMMANDS:
+#   add
+#   subtract
+#   multiply
+#   divide
+#   status
+#   stop
+#
+# EXAMPLES:
+#   add,1,2         = 3
+#   subtract,5,1    = 4
+#   multiply,2,3    = 6
+#   divide,10,2     = 5
+
+
 import asyncio
 import threading
+import time
 
 
 class Calculator:
@@ -11,96 +32,142 @@ class Calculator:
         self.command = ''
         self.timeLeft = 0
         self.solution = 'None'
+        self.abort = False
 
     def add(self, a, b):
-        self.command = f"{a} + {b}"
         sol = a + b
         self.solution = sol
-        return sol
+        return str(sol)
 
     def subtract(self, a, b):
-        self.command = f"{a} - {b}"
         sol = a - b
         self.solution = sol
-        return sol
+        return str(sol)
 
     def multiply(self, a, b):
-        self.command = f"{a} * {b}"
         sol = a * b
         self.solution = sol
-        return sol
+        return str(sol)
 
     def divide(self, a, b):
-        self.command = f"{a} // {b}"
-        sol = a / b
+        try:
+            sol = a / b
+        except ZeroDivisionError:
+            return 'CANNOT DIVIDE BY ZERO'
         self.solution = sol
-        return sol
+        return str(sol)
 
     def status(self):
         reply = f"state={self.state}\n" \
-                f"command={self.comand}\n" \
+                f"command={self.command}\n" \
                 f"timeLeft={self.timeLeft}\n" \
                 f"solution={self.solution}"
         return reply
 
     def stop(self):
-        reply = f"{self.command} CANCELLED"
+        reply = ''
+        if self.timeLeft != 0:
+            self.timeLeft = 0
+            self.abort = True
+            reply = "CANCELLED"
+        else:
+            reply = "IDLE"
+
         return reply
+
+    def count_down_time(self):
+        self.timeLeft = 10
+        while self.timeLeft > 0:
+            time.sleep(1)
+            self.timeLeft -= 1
+        self.timeLeft = 0
+
+
+def calculate(writer, msg):
+    msgList = msg.split(",")
+    reply = ''
+
+    calc.command = msg
+    calc.state = 'busy'
+    calc.count_down_time()
+
+    if calc.abort:
+        calc.abort = False
+    else:
+        if msgList[0] == 'add':
+            reply = calc.add(float(msgList[1]), float(msgList[2]))
+        elif msgList[0] == 'subtract':
+            reply = calc.subtract(float(msgList[1]), float(msgList[2]))
+        elif msgList[0] == 'multiply':
+            reply = calc.multiply(float(msgList[1]), float(msgList[2]))
+        elif msgList[0] == 'divide':
+            reply = calc.divide(float(msgList[1]), float(msgList[2]))
+
+        reply = msg + ' = ' + reply + '\n'
+        writer.write(reply.encode())
+
+    calc.state = 'idle'
 
 
 async def check_data(msg):
     msgList = msg.split(",")
-    reply = f"{msg} ERROR"
 
     if len(msgList) == 1:
-        if msgList[0] == 'status':
-            reply = calc.status()
-            return reply
-
-        elif msgList[0] == 'stop':
-            reply = calc.stop()
-            return reply
-
+        if msgList[0] == 'status' or msgList[0] == 'stop':
+            return ''
         else:
-            reply = f"{msg} ERROR"
-            return reply
+            return f"{msg} ERROR"
 
     elif len(msgList) == 3:
-        if msgList[0] == 'add':
-            calc.add(msgList[1], msgList[2])
+        if msgList[0] == 'add' or msgList[0] == 'subtract' or msgList[0] == 'multiply' or msgList[0] == 'divide':
+            try:
+                float(msgList[1])
+                float(msgList[2])
+                return f"{msg} RUNNING"
 
-        elif msgList[0] == 'subtract':
-            calc.subtract(msgList[1], msgList[2])
+            except IndexError:
+                return f"{msg} ERROR"
 
-        elif msgList[0] == 'multiply':
-            calc.multiply(msgList[1], msgList[2])
-
-        elif msgList[0] == 'divide':
-            calc.divide(msgList[1], msgList[2])
+            except ValueError:
+                return f"{msg} ERROR"
 
         else:
-            reply = f"{msg} ERROR"
-            return reply
+            return f"{msg} ERROR"
 
     else:
-        reply = f"{msg} ERROR"
-        return reply
-
-    return reply
+        return f"{msg} ERROR"
 
 
 async def handle_data(reader, writer):
-    data = await reader.read(100)
-    message = data.decode()
-    addr = writer.get_extra_info('peername')
+    reply = ''
+    loop = True
+    while loop:
+        data = await reader.read(100)
+        message = data.decode()[:-2]
 
-    print(f"Received {message!r} from {addr!r}")
+        if message == 'q':
+            loop = False
+        else:
+            check = await check_data(message)
+            check = check+'\n'
+            writer.write(check.encode())
 
-    reply = await check_data(message)
+            msgList = message.split(",")
+            if len(msgList) == 1:
+                if msgList[0] == 'status':
+                    reply = calc.status()
+                elif msgList[0] == 'stop':
+                    reply = calc.stop()
 
-    reply = reply + '\r\n>'
-    print(f"Send: {reply!r}")
-    writer.write(reply.encode())
+                reply = reply + '\n'
+                writer.write(reply.encode())
+
+            else:
+                comThread = threading.Thread(target=calculate, args=(writer, message,))
+                comThread.start()
+
+        await writer.drain()
+
     await writer.drain()
     writer.close()
 
